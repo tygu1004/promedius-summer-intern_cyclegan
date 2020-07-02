@@ -6,30 +6,25 @@ Created on Sat Oct 27 19:52:02 2018
 """
 import tensorflow as tf
 import numpy as np
-
+from tensorflow.keras import layers
 
 def discriminator(image, options, reuse=False, name='discriminator'):
     def first_layer(input_, out_channels, ks=3, s=1, name='disc_conv_layer'):
-        with tf.variable_scope(name):
-            return lrelu(conv2d(input_, out_channels, ks=ks, s=s))
+        return lrelu(conv2d(input_, out_channels, ks=ks, s=s))
+
     def conv_layer(input_, out_channels, ks=3, s=1, name='disc_conv_layer'):
-        with tf.variable_scope(name):
-            return lrelu(batchnorm(conv2d(input_, out_channels, ks=ks, s=s)))
+        return lrelu(batchnorm(conv2d(input_, out_channels, ks=ks, s=s)))
+       
     def last_layer(input_, out_channels, ks=4, s=1, name='disc_conv_layer'):
-        with tf.variable_scope(name):
-            return tf.contrib.layers.fully_connected(conv2d(input_, out_channels, ks=ks, s=s), out_channels)
-        
-    with tf.variable_scope(name):
-        if reuse:
-            tf.get_variable_scope().reuse_variables()
-        else:
-            assert tf.get_variable_scope().reuse is False
-        l1 = first_layer(image, options.df_dim, ks=4, s=2, name='disc_layer1')
-        l2 = conv_layer(l1, options.df_dim*2, ks=4, s=2, name='disc_layer2')
-        l3 = conv_layer(l2, options.df_dim*4, ks=4, s=2, name='disc_layer3')
-        l4 = conv_layer(l3, options.df_dim*8, ks=4, s=1, name='disc_layer4')
-        l5 = last_layer(l4, options.img_channel, ks=4, s=1, name='disc_layer5')
-        return l5
+        return layers.Dense(units=out_channels)(conv2d(input_, out_channels, ks=ks, s=s))
+
+    l1 = first_layer(image, options.df_dim, ks=4, s=2, name='disc_layer1')
+    l2 = conv_layer(l1, options.df_dim*2, ks=4, s=2, name='disc_layer2')
+    l3 = conv_layer(l2, options.df_dim*4, ks=4, s=2, name='disc_layer3')
+    l4 = conv_layer(l3, options.df_dim*8, ks=4, s=1, name='disc_layer4')
+    l5 = last_layer(l4, options.img_channel, ks=4, s=1, name='disc_layer5')
+    
+    return l5
 
 
 
@@ -69,21 +64,18 @@ def generator(image, options, reuse=False, name="generator"):
 
 # network components
 def lrelu(x, leak=0.2, name="lrelu"):
-    with tf.variable_scope(name):
-        return tf.maximum(x, leak*x)
+    return layers.LeakyReLU(alpha=leak)(x)
 
 def batchnorm(input_, name="batch_norm"):
-    with tf.variable_scope(name):
-        return tf.layers.batch_normalization(input_, axis=3, epsilon=1e-5, \
-            momentum=0.1, training=True, \
-            gamma_initializer=tf.random_normal_initializer(1.0, 0.02))
+    return layers.BatchNormalization(axis=3, epsilon=1e-5, \
+            momentum=0.1, trainable=True, \
+            gamma_initializer=tf.random_normal_initializer(1.0, 0.02))(input_)
 
 def conv2d(batch_input, out_channels, ks=4, s=2, name="cov2d"):
-    with tf.variable_scope(name):
-        padded_input = tf.pad(batch_input, [[0, 0], [1, 1], [1, 1], [0, 0]], mode="CONSTANT")
-        return tf.layers.conv2d(padded_input, out_channels, kernel_size=ks, \
-            strides=s, padding="valid", \
-            kernel_initializer=tf.random_normal_initializer(0, 0.02))
+    padded_input = tf.pad(batch_input, [[0, 0], [1, 1], [1, 1], [0, 0]], mode="CONSTANT")
+    return layers.Conv2D(out_channels, kernel_size=ks, \
+        strides=s, padding="valid", \
+        kernel_initializer=tf.random_normal_initializer(0, 0.02))(padded_input)
 
 #### loss
 def least_square(A, B):
