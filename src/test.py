@@ -16,8 +16,17 @@ options = OPTIONS._make((args.ngf, args.nglf, args.ndf,
 with tf.device('/CPU:0'):
 	tmp = np.random.randn(32, 56, 56, 1)
 
-	inputs = tf.keras.Input(shape=(56,56,1))
-	x = md.discriminator(inputs, options)
+	inputs1 = tf.keras.Input(shape=(56,56,1))
 	
-	model = Model(inputs, x)
-	model.summary()
+	inputs2 = tf.keras.Input(shape=(56,56,1))
+	
+
+	x = md.discriminator(inputs1, options)
+	y = md.generator(inputs2, options)
+
+	model1 = Model(inputs1, x)
+	model1.summary()
+
+	model2 = Model(inputs2, y)
+	model2.summary()
+
