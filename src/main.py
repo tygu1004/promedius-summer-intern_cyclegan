@@ -49,6 +49,7 @@ parser.add_argument('--phase', dest='phase', default='train', help='train, test'
 #train detail
 parser.add_argument('--end_epoch', dest='end_epoch', type=int, default=160, help='end epoch')
 parser.add_argument('--decay_epoch', dest='decay_epoch', type=int, default=100, help='epoch to decay lr')
+parser.add_argument('--decay_rate', dest='decay_rate', type=float, default=0.98, help='decay rate for lr')
 parser.add_argument('--lr', dest='lr', type=float, default=0.0002, help='initial learning rate for adam')
 parser.add_argument('--batch_size', dest='batch_size', type=int,  default=10, help='batch size')
 parser.add_argument('--L1_lambda', dest='L1_lambda', type=float, default=10.0, help='weight of cyclic loss')
@@ -75,6 +76,5 @@ os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu_no)
 
 tfconfig = tf.ConfigProto(allow_soft_placement=True)
 tfconfig.gpu_options.allow_growth = True
-sess = tf.Session(config=tfconfig)
-model = cycle_identity(sess, args)
+model = cycle_identity(args)
 model.train(args) if args.phase == 'train' else model.test(args)
