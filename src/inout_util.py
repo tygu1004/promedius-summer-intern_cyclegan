@@ -127,33 +127,7 @@ class DCMDataLoader(object):
             img = (img - min_) / (max_ - min_)
             return img
 
-    # RED CNN
-    def augumentation(self, LDCT, NDCT):
-        """
-        sltd_random_indx[0] :
-            1: rotation
-            2. flipping
-            3. scaling
-            4. pass
-        sltd_random_indx[1] :
-            select params
-        """
-        sltd_random_indx = [np.random.choice(range(4)), np.random.choice(range(2))]
-        if sltd_random_indx[0] == 0:
-            return rotate(LDCT, 45, reshape=False), rotate(NDCT, 45, reshape=False)
-        elif sltd_random_indx[0] == 1:
-            param = [True, False][sltd_random_indx[1]]
-            if param:
-                return LDCT[:, ::-1], NDCT[:, ::-1]  # horizontal
-            return LDCT[::-1, :], NDCT[::-1, :]  # vertical
-        elif sltd_random_indx[0] == 2:
-            param = [0.5, 2][sltd_random_indx[1]]
-            return LDCT * param, NDCT * param
-        elif sltd_random_indx[0] == 3:
-            return LDCT, NDCT
-
-    # WGAN_VGG, RED_CNN
-    def get_random_patches(self, patch_size, whole_size=512):
+    def get_train_set(self, patch_size, whole_size=512):
         whole_h = whole_w = whole_size
         h = w = patch_size
 
@@ -164,23 +138,24 @@ class DCMDataLoader(object):
         # patch image center(coordinate on whole image)
         h_pc, w_pc = np.random.choice(range(hd, hu + 1)), np.random.choice(range(wd, wu + 1))
 
-        LDCT_patch_set = tf.data.Dataset.from_tensor_slices(self.LDCT_images)
-        NDCT_patch_set = tf.data.Dataset.from_tensor_slices(self.NDCT_images)
+        ldct_patch_set = tf.data.Dataset.from_tensor_slices(tf.expand_dims(self.LDCT_images, axis=-1))
+        ndct_patch_set = tf.data.Dataset.from_tensor_slices(tf.expand_dims(self.NDCT_images, axis=-1))
 
-        LDCT_patch_set = LDCT_patch_set.map(lambda x: x[h_pc - hd: int(h_pc + np.round(h / 2)), w_pc - wd: int(w_pc + np.round(h / 2))])
-        NDCT_patch_set = NDCT_patch_set.map(lambda x: x[h_pc - hd: int(h_pc + np.round(h / 2)), w_pc - wd: int(w_pc + np.round(h / 2))])
+        ldct_patch_set = ldct_patch_set.map(
+            lambda x: x[h_pc - hd: int(h_pc + np.round(h / 2)), w_pc - wd: int(w_pc + np.round(h / 2))])
+        ndct_patch_set = ndct_patch_set.map(
+            lambda x: x[h_pc - hd: int(h_pc + np.round(h / 2)), w_pc - wd: int(w_pc + np.round(h / 2))])
 
-#        LDCT_patch = LDCT_slice[h_pc - hd: int(h_pc + np.round(h / 2)), w_pc - wd: int(w_pc + np.round(h / 2))]
-#        NDCT_patch = NDCT_slice[h_pc - hd: int(h_pc + np.round(h / 2)), w_pc - wd: int(w_pc + np.round(h / 2))]
+        ldct_patch_set = ldct_patch_set.batch(self.batch_size)
+        ndct_patch_set = ndct_patch_set.batch(self.batch_size)
 
-        '''
-        if self.model.lower() == 'red_cnn':
-            return self.augumentation(LDCT_patch, NDCT_patch)
-        '''
+        return ldct_patch_set, ndct_patch_set
 
-        return LDCT_patch_set, NDCT_patch_set
-#        return LDCT_patch, NDCT_patch
+    def get_test_set(self):
+        ldct_set = tf.data.Dataset.from_tensor_slices(tf.expand_dims(self.LDCT_images, axis=-1))
+        ndct_set = tf.data.Dataset.from_tensor_slices(tf.expand_dims(self.NDCT_images, axis=-1))
 
+        return ldct_set, ndct_set
 
     def input_pipeline(self, sess, image_size, end_point, depth=1):
         queue_input = tf.placeholder(tf.float32)
@@ -195,7 +170,9 @@ class DCMDataLoader(object):
 
         def enqueue(coord):
             enqueue_size = max(200, self.batch_size)
+
             if self.model == 'cyclegan':  # only cyclegan (cycelgain-identity:random patch))
+                '''
                 self.step = 0
                 while not coord.should_stop():
                     start_pos = 0
@@ -218,6 +195,7 @@ class DCMDataLoader(object):
                 if self.step > end_point:
                     coord.request_stop()
                 sess.run(close_op)
+                '''
             else:
                 self.step = 0
                 while not coord.should_stop():
@@ -327,5 +305,5 @@ def ParseList(s):
 def TaskID_Generator():
     currentTime = datetime.now()
     strTime = "%04d%02d%02d_%02d%02d%02d" % (
-    currentTime.year, currentTime.month, currentTime.day, currentTime.hour, currentTime.minute, currentTime.second)
+        currentTime.year, currentTime.month, currentTime.day, currentTime.hour, currentTime.minute, currentTime.second)
     return strTime
