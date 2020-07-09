@@ -24,7 +24,7 @@ import inout_util as ut
 parser = argparse.ArgumentParser(description='')
 # -------------------------------------
 #set load directory
-parser.add_argument('--dcm_path', dest='dcm_path', default= '/data/CT_image', help='dicom file directory')
+parser.add_argument('--dcm_path', dest='dcm_path', default= 'data/CT_image', help='dicom file directory')
 parser.add_argument('--train_A_list', dest='train_patient_no_A',type=ut.ParseList, default= 'L067,L291')
 parser.add_argument('--train_B_list', dest='train_patient_no_B',type=ut.ParseList, default= 'L067,L291')
 parser.add_argument('--test_A_list', dest='test_patient_no_A',type=ut.ParseList, default= 'L067,L291')
@@ -47,9 +47,7 @@ parser.add_argument('--model', dest='model', default='cycle_identity', help='red
 parser.add_argument('--phase', dest='phase', default='train', help='train, test')
 
 #train detail
-parser.add_argument('--end_epoch', dest='end_epoch', type=int, default=160, help='end epoch')
-parser.add_argument('--decay_epoch', dest='decay_epoch', type=int, default=100, help='epoch to decay lr')
-parser.add_argument('--decay_rate', dest='decay_rate', type=float, default=0.98, help='decay rate for lr')
+parser.add_argument('--epoch', dest='epoch', type=int, default=160, help='set epoch')
 parser.add_argument('--lr', dest='lr', type=float, default=0.0002, help='initial learning rate for adam')
 parser.add_argument('--batch_size', dest='batch_size', type=int,  default=10, help='batch size')
 parser.add_argument('--L1_lambda', dest='L1_lambda', type=float, default=10.0, help='weight of cyclic loss')
@@ -74,7 +72,5 @@ print(args)
 
 os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu_no)
 
-tfconfig = tf.ConfigProto(allow_soft_placement=True)
-tfconfig.gpu_options.allow_growth = True
 model = cycle_identity(args)
 model.train(args) if args.phase == 'train' else model.test(args)
