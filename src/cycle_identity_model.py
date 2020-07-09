@@ -300,7 +300,7 @@ class cycle_identity(object):
                 if current_step % args.print_freq == 0:
                     print(("Epoch: {} {}/{} time: {} ".format(epoch, step_count, steps_per_epoch,
                                                               time.time() - start_time)))
-                    # summary trainig sample image
+                    # summary training sample image
                     check_train_sample(patch_X, patch_Y, current_step)
 
                     # check sample image
