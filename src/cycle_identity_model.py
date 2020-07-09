@@ -19,7 +19,7 @@ import numpy as np
 from collections import namedtuple
 import cycle_identity_module as md
 import inout_util as ut
-
+from PIL import Image
 
 class cycle_identity(object):
     def __init__(self, args):
@@ -43,8 +43,6 @@ class cycle_identity(object):
         self.options = OPTIONS._make((args.ngf, args.nglf, args.ndf,
                                       args.img_channel, args.phase == 'train'))
 
-        self.steps_per_epoch = args.steps_per_epoch
-
         """
         load images
         """
@@ -66,6 +64,7 @@ class cycle_identity(object):
                                                       is_unpair=args.unpair, model=args.model)
             self.train_image_loader(args.train_patient_no_A, args.train_patient_no_B)
             self.test_image_loader(args.test_patient_no_A, args.test_patient_no_B)
+
             print('data load complete !!!, {}\nN_train : {}, N_test : {}'.format(time.time() - t1,
                                                                                  len(
                                                                                      self.train_image_loader.LDCT_image_name),
@@ -73,6 +72,7 @@ class cycle_identity(object):
                                                                                      self.test_image_loader.LDCT_image_name)))
             self.patch_X_set, self.patch_Y_set = self.train_image_loader.get_train_set(args.patch_size)
             self.whole_X_set, self.whole_Y_set = self.test_image_loader.get_test_set()
+
         else:
             self.test_image_loader = ut.DCMDataLoader(args.dcm_path,
                                                       image_size=args.whole_size, patch_size=args.patch_size,
@@ -101,35 +101,27 @@ class cycle_identity(object):
         self.discriminator_X = md.discriminator(input_shape, self.options, name="discriminatorX")
         self.discriminator_Y = md.discriminator(input_shape, self.options, name="discriminatorY")
 
-        '''
-        #### variable list
-        t_vars = tf.trainable_variables()
-        self.d_vars = [var for var in t_vars if 'discriminator' in var.name]
-        self.g_vars = [var for var in t_vars if 'generator' in var.name]
-        '''
-        '''
+        """
+        set check point
+        """
+        self.ckpt = tf.train.Checkpoint(step=tf.Variable(1),
+                                        generator_G=self.generator_G,
+                                        generator_F=self.generator_F,
+                                        discriminator_X=self.discriminator_X,
+                                        discriminator_Y=self.discriminator_Y,
+                                        generator_optimizer=tf.keras.optimizers.Adam(learning_rate=args.lr,
+                                                                                     beta_1=args.beta1,
+                                                                                     beta_2=args.beta2),
+                                        discriminator_optimizer=tf.keras.optimizers.Adam(learning_rate=args.lr,
+                                                                                         beta_1=args.beta1,
+                                                                                         beta_2=args.beta2))
         """
         Summary
         """
-        #### loss summary
-        # generator
-        self.G_loss_sum = tf.summary.scalar("1_G_loss", self.G_loss, family='Generator_loss')
-        self.cycle_loss_sum = tf.summary.scalar("2_cycle_loss", self.cycle_loss, family='Generator_loss')
-        self.identity_loss_sum = tf.summary.scalar("3_identity_loss", self.identity_loss, family='Generator_loss')
-        self.G_loss_X2Y_sum = tf.summary.scalar("4_G_loss_X2Y", self.G_loss_X2Y, family='Generator_loss')
-        self.G_loss_Y2X_sum = tf.summary.scalar("5_G_loss_Y2X", self.G_loss_Y2X, family='Generator_loss')
-        self.g_sum = tf.summary.merge(
-            [self.G_loss_sum, self.cycle_loss_sum, self.identity_loss_sum, self.G_loss_X2Y_sum, self.G_loss_Y2X_sum])
+        self.writer = tf.summary.create_file_writer(self.log_dir)
 
-        # discriminator
-        self.D_loss_sum = tf.summary.scalar("1_D_loss", self.D_loss, family='Discriminator_loss')
-        self.D_loss_Y_sum = tf.summary.scalar("2_D_loss_Y", self.D_loss_patch_Y, family='Discriminator_loss')
-        self.D_loss_GX_sum = tf.summary.scalar("3_D_loss_GX", self.D_loss_patch_GX, family='Discriminator_loss')
-        self.D_loss_X_sum = tf.summary.scalar("4_D_loss_X", self.D_loss_patch_X, family='Discriminator_loss')
-        self.D_loss_FY_sum = tf.summary.scalar("5_D_loss_FY", self.D_loss_patch_FY, family='Discriminator_loss')
-        self.d_sum = tf.summary.merge(
-            [self.D_loss_sum, self.D_loss_Y_sum, self.D_loss_GX_sum, self.D_loss_X_sum, self.D_loss_FY_sum])
-
+        '''
+        
         #### image summary
         self.test_G_X = self.generator(self.test_X, self.options, True, name="generatorX2Y")
         self.test_F_Y = self.generator(self.test_Y, self.options, reuse=True, name="generatorY2X")
@@ -149,17 +141,14 @@ class cycle_identity(object):
         self.summary_psnr = tf.summary.merge(
             [self.summary_psnr_input, self.summary_psnr_result_G, self.summary_psnr_result_F])
 
-        # model saver
-        self.saver = tf.train.Saver(max_to_keep=None)
-
         print('--------------------------------------------\n# of parameters : {} '. \
               format(np.sum([np.prod(v.get_shape().as_list()) for v in tf.trainable_variables()])))
         '''
 
     def train(self, args):
-        @tf.function
-        def train_step(patch_X, patch_Y, g_optim, d_optim):
-            with tf.GradientTape(persistent=True) as tape:
+        # @tf.function
+        def train_step(patch_X, patch_Y, g_optim, d_optim, step):
+            with tf.GradientTape(persistent=True) as tape, self.writer.as_default():
                 # forward Generator
                 G_X = self.generator_G(patch_X)
                 F_GX = self.generator_F(G_X)
@@ -194,6 +183,24 @@ class cycle_identity(object):
                 D_loss_X = (D_loss_patch_X + D_loss_patch_FY)
                 D_loss = (D_loss_X + D_loss_Y) / 2
 
+                #### loss summary
+                # generator
+
+                with tf.name_scope("Generator_loss"):
+                    tf.summary.scalar(name="1_G_loss", data=G_loss, step=step)
+                    tf.summary.scalar(name="2_cycle_loss", data=cycle_loss, step=step)
+                    tf.summary.scalar(name="3_identity_loss", data=identity_loss, step=step)
+                    tf.summary.scalar(name="4_G_loss_X2Y", data=G_loss_X2Y, step=step)
+                    tf.summary.scalar(name="5_G_loss_Y2X", data=G_loss_Y2X, step=step)
+
+                # discriminator
+                with tf.name_scope("Discriminator_loss"):
+                    tf.summary.scalar(name="1_D_loss", data=D_loss, step=step)
+                    tf.summary.scalar(name="2_D_loss_Y", data=D_loss_patch_Y, step=step)
+                    tf.summary.scalar(name="3_D_loss_GX", data=D_loss_patch_GX, step=step)
+                    tf.summary.scalar(name="4_D_loss_X", data=D_loss_patch_X, step=step)
+                    tf.summary.scalar(name="5_D_loss_FY", data=D_loss_patch_FY, step=step)
+
             # get gradients values from tape
             generator_g_gradients = tape.gradient(G_loss,
                                                   self.generator_G.trainable_variables)
@@ -217,126 +224,117 @@ class cycle_identity(object):
             d_optim.apply_gradients(zip(discriminator_y_gradients,
                                         self.discriminator_Y.trainable_variables))
 
-        #        self.writer = tf.summary.FileWriter(self.log_dir, self.sess.graph)
+        # summary test sample image during training
+        def check_train_sample(patch_X_batch, patch_Y_batch, step):
+            patch_X = tf.expand_dims(patch_X_batch[0], axis=0)
+            patch_Y = tf.expand_dims(patch_Y_batch[0], axis=0)
+            G_X = self.generator_G(patch_X)
+            F_Y = self.generator_F(patch_Y)
 
-        # pretrained model load
-        # star_step : load SUCESS -> self.start_step 파일명에 의해 초기화... // failed -> 0
+            patch_X = self.train_image_loader.rescale_arr(data=patch_X, i_min=tf.math.reduce_min(patch_X), i_max=tf.math.reduce_max(patch_X), o_min=0, o_max=255, out_dtype=tf.uint8)
+            patch_Y = self.train_image_loader.rescale_arr(data=patch_Y, i_min=tf.math.reduce_min(patch_Y), i_max=tf.math.reduce_max(patch_Y), o_min=0, o_max=255, out_dtype=tf.uint8)
+            G_X = self.test_image_loader.rescale_arr(data=G_X, i_min=tf.math.reduce_min(G_X), i_max=tf.math.reduce_max(G_X), o_min=0, o_max=255, out_dtype=tf.uint8)
+            F_Y = self.test_image_loader.rescale_arr(data=F_Y, i_min=tf.math.reduce_min(F_Y), i_max=tf.math.reduce_max(F_Y), o_min=0, o_max=255, out_dtype=tf.uint8)
+
+            with self.writer.as_default():
+                with tf.name_scope("check_train_sample"):
+                    tf.summary.image(name="patch_X", step=step, data=patch_X, max_outputs=1)
+                    tf.summary.image(name="patch_Y", step=step, data=patch_Y, max_outputs=1)
+                    tf.summary.image(name="G(patch_X)", step=step, data=G_X, max_outputs=1)
+                    tf.summary.image(name="F(patch_Y)", step=step, data=F_Y, max_outputs=1)
+
+        def check_test_sample(step):
+            buffer_size = 1000
+
+            sample_whole_X = tf.constant(list(self.whole_X_set.shuffle(buffer_size).take(1).as_numpy_iterator()))
+            sample_whole_Y = tf.constant(list(self.whole_Y_set.shuffle(buffer_size).take(1).as_numpy_iterator()))
+
+            G_X = self.generator_G(sample_whole_X)
+            F_Y = self.generator_F(sample_whole_Y)
+
+            sample_whole_X = self.train_image_loader.rescale_arr(data=sample_whole_X, i_min=tf.math.reduce_min(sample_whole_X), i_max=tf.math.reduce_max(sample_whole_X), o_min=0, o_max=255, out_dtype=tf.uint8)
+            sample_whole_Y = self.train_image_loader.rescale_arr(data=sample_whole_Y, i_min=tf.math.reduce_min(sample_whole_Y), i_max=tf.math.reduce_max(sample_whole_Y), o_min=0, o_max=255, out_dtype=tf.uint8)
+            G_X = self.test_image_loader.rescale_arr(data=G_X, i_min=tf.math.reduce_min(G_X), i_max=tf.math.reduce_max(G_X), o_min=0, o_max=255, out_dtype=tf.uint8)
+            F_Y = self.test_image_loader.rescale_arr(data=F_Y, i_min=tf.math.reduce_min(F_Y), i_max=tf.math.reduce_max(F_Y), o_min=0, o_max=255, out_dtype=tf.uint8)
+
+            with self.writer.as_default():
+                with tf.name_scope("check_test_sample"):
+                    tf.summary.image(name="sample_whole_X", step=step, data=sample_whole_X, max_outputs=1)
+                    tf.summary.image(name="sample_whole_Y", step=step, data=sample_whole_Y, max_outputs=1)
+                    tf.summary.image(name="G(sample_whole_X)", step=step, data=G_X, max_outputs=1)
+                    tf.summary.image(name="F(sample_whole_Y)", step=step, data=F_Y, max_outputs=1)
+
+        # #############################
+        # pre-trained model load
+        # start_step : load SUCCESS -> self.start_step 파일명에 의해 초기화... // failed -> 0
 
         if args.continue_train:
-            _, start_step = self.load()
-            if _:
-                print(" [*] Load SUCCESS")
-            else:
-                print(" [!] Load failed...")
+            is_load, current_step = self.load()
+            print(" [*] Load SUCCESS") if is_load else print(" [!] Load failed...")
+        else:
+            current_step = 0
+            print(" [*] Start new train")
 
-        # iteration -> epoch
-        self.start_epoch = int((start_step + 1) / self.steps_per_epoch)
+        steps_per_epoch = min(len(self.train_image_loader.LDCT_image_name),
+                              len(self.train_image_loader.NDCT_image_name)) // args.batch_size
 
-        print('Start point : iter : {}, epoch : {}'.format(start_step, self.start_epoch))
-
-        #start_time = time.time()
-        lr = args.lr
-        #batch_idxs = self.steps_per_epoch
-
-        if self.start_epoch != 0:  # if checkpoint loaded and already done >= 1 steps, set lr as at that epoch.
-            lr = lr * (args.decay_rate ** self.start_epoch)
+        print('Start point : step : {}'.format(current_step))
 
         # decay learning rate
-        lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(initial_learning_rate=lr,
-                                                                     decay_steps=self.steps_per_epoch,
-                                                                     decay_rate=0.98, staircase=True)
+        lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(initial_learning_rate=args.lr,
+                                                                     decay_steps=args.decay_step,
+                                                                     decay_rate=args.decay_rate, staircase=True)
         d_optim = tf.keras.optimizers.Adam(learning_rate=lr_schedule, beta_1=args.beta1)
         g_optim = tf.keras.optimizers.Adam(learning_rate=lr_schedule, beta_1=args.beta1)
 
-        for epoch in range(self.start_epoch, args.end_epoch):
+        start_time = time.time()
+        for epoch in range(args.end_epoch):
 
-            # for counting steps and limiting the number of iteration.
+            # for counting steps per epoch
             step_count = 0
-
             for patch_X, patch_Y in tf.data.Dataset.zip((self.patch_X_set, self.patch_Y_set)):
-                train_step(patch_X, patch_Y, g_optim, d_optim)
-
-                '''
-                self.writer.add_summary(summary_str, self.start_step)
-                '''
-                '''
-                if (self.start_step + 1) % args.print_freq == 0:
-                    currt_step = self.start_step % batch_idxs if epoch != 0 else self.start_step
-                    print(("Epoch: {} {}/{} time: {} lr {}: ".format(epoch, currt_step, batch_idxs,
-                                                                     time.time() - start_time, lr)))
-
+                train_step(patch_X, patch_Y, g_optim, d_optim, current_step)
+                current_step += 1
+                step_count += 1
+                self.ckpt.step.assign_add(1)
+                if current_step % args.print_freq == 0:
+                    print(("Epoch: {} {}/{} time: {} ".format(epoch, step_count, steps_per_epoch,
+                                                              time.time() - start_time)))
                     # summary trainig sample image
-                    summary_str1 = self.sess.run(self.summary_image_train)
-                    self.writer.add_summary(summary_str1, self.start_step)
+                    check_train_sample(patch_X, patch_Y, current_step)
 
                     # check sample image
-                    self.check_sample(args, self.start_step)
+                    # check_test_sample(current_step)
 
-                if (self.start_step + 1) % args.save_freq == 0:
-                    self.save(args, self.start_step)
-                '''
-                step_count += 1
-                start_step += 1
-                print(step_count)
-                if step_count >= self.steps_per_epoch:
-                    break
+                if current_step % args.save_freq == 0:
+                    self.save(args, current_step)
 
-    #        self.train_image_loader.coord.request_stop()
-    #        self.train_image_loader.coord.join(self.train_image_loader.enqueue_threads)
-
-    # summary test sample image during training
-    def check_sample(self, args, idx):
-        sltd_idx = np.random.choice(range(len(self.test_image_loader.LDCT_image_name)))
-
-        sample_X_image, sample_Y_image = self.test_image_loader.LDCT_images[sltd_idx], \
-                                         self.test_image_loader.NDCT_images[sltd_idx]
-
-        G_X = self.sess.run(
-            self.test_G_X,
-            feed_dict={self.test_Y: sample_Y_image.reshape([1] + self.test_Y.get_shape().as_list()[1:]),
-                       self.test_X: sample_X_image.reshape([1] + self.test_Y.get_shape().as_list()[1:])})
-
-        G_X = np.array(G_X).astype(np.float32)
-
-        summary_str1, summary_str2 = self.sess.run(
-            [self.summary_image_test, self.summary_psnr],
-            feed_dict={self.test_X: sample_X_image.reshape([1] + self.test_X.get_shape().as_list()[1:]),
-                       self.test_Y: sample_Y_image.reshape([1] + self.test_Y.get_shape().as_list()[1:]),
-                       self.test_G_X: G_X.reshape([1] + self.test_G_X.get_shape().as_list()[1:])})
-
-        self.writer.add_summary(summary_str1, idx)
-        self.writer.add_summary(summary_str2, idx)
-
-        # save model
-
+    # save model
     def save(self, args, step):
-        model_name = args.model + ".model"
+        save_file_name = args.model + ".model." + "step_" + str(step)
         self.checkpoint_dir = os.path.join('.', self.checkpoint_dir)
 
         if not os.path.exists(self.checkpoint_dir):
             os.makedirs(self.checkpoint_dir)
 
-        self.saver.save(self.sess,
-                        os.path.join(self.checkpoint_dir, model_name),
-                        global_step=step)
+        path = os.path.abspath(self.ckpt.save(os.path.join(self.checkpoint_dir, save_file_name)))
+
+        print("Save check point : " + path)
 
     # load model    
     def load(self):
         print(" [*] Reading checkpoint...")
         self.checkpoint_dir = os.path.join('.', self.checkpoint_dir)
+        ckpt_state = tf.train.get_checkpoint_state(self.checkpoint_dir)
 
-        ckpt = tf.train.get_checkpoint_state(self.checkpoint_dir)
-        if ckpt and ckpt.model_checkpoint_path:
-            ckpt_name = os.path.basename(ckpt.model_checkpoint_path)
-            start_step = int(ckpt_name.split('-')[-1])
-            self.saver.restore(self.sess, os.path.join(self.checkpoint_dir, ckpt_name))
+        if ckpt_state and ckpt_state.model_checkpoint_path:
+            self.ckpt.restore(ckpt_state.model_checkpoint_path)
+            start_step = int(self.ckpt.step.numpy())
             return True, start_step
         else:
             return False, 0
 
     def test(self, args):
-        self.sess.run(tf.global_variables_initializer())
-
         if self.load():
             print(" [*] Load SUCCESS")
         else:
