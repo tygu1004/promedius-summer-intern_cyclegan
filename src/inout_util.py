@@ -61,9 +61,8 @@ class DCMDataLoader(object):
         def get_images(patent_no_list, domain_name):
             p = []
             image_name = []
-            for patent_no in (patent_no_list):
+            for patent_no in patent_no_list:
                 p_path = glob(os.path.join(self.dcm_path, patent_no, '*.' + self.extension))
-
                 # load images
                 org_images, slice_nm = self.get_pixels_hu(self.load_scan(p_path),
                                                           '{}_{}'.format(patent_no, domain_name))
@@ -127,6 +126,15 @@ class DCMDataLoader(object):
             img = (img - min_) / (max_ - min_)
             return img
 
+    def rescale_arr(self, data, i_min, i_max, o_min, o_max, out_dtype=None):
+        '''data: array
+        Returns: rescaled data'''
+        if not out_dtype:
+            out_dtype = data.dtype
+        scale = float(o_max - o_min) / (i_max - i_min)
+        out_data = (data - i_min) * scale + o_min
+        return tf.dtypes.cast(out_data, out_dtype)
+
     def get_train_set(self, patch_size, whole_size=512):
         whole_h = whole_w = whole_size
         h = w = patch_size
@@ -156,74 +164,6 @@ class DCMDataLoader(object):
         ndct_set = tf.data.Dataset.from_tensor_slices(tf.expand_dims(self.NDCT_images, axis=-1))
 
         return ldct_set, ndct_set
-
-    def input_pipeline(self, sess, image_size, end_point, depth=1):
-        queue_input = tf.placeholder(tf.float32)
-        queue_output = tf.placeholder(tf.float32)
-        queue = tf.FIFOQueue(capacity=self.capacity, dtypes=[tf.float32, tf.float32], \
-                             shapes=[(image_size, image_size, depth), (image_size, image_size, depth)])
-        enqueue_op = queue.enqueue_many([queue_input, queue_output])
-        close_op = queue.close()
-        dequeue_op = queue.dequeue_many(self.batch_size)
-
-        self.coord = tf.train.Coordinator()
-
-        def enqueue(coord):
-            enqueue_size = max(200, self.batch_size)
-
-            if self.model == 'cyclegan':  # only cyclegan (cycelgain-identity:random patch))
-                '''
-                self.step = 0
-                while not coord.should_stop():
-                    start_pos = 0
-                    if self.is_unpair:
-                        shuffle(self.LDCT_index)
-                        shuffle(self.NDCT_index)
-                    else:
-                        self.NDCT_index = self.LDCT_index
-                        shuffle(self.LDCT_index)
-
-                    while start_pos < len(self.LDCT_index):
-                        end_pos = start_pos + enqueue_size
-                        raw_LDCT_chunk = self.LDCT_images[self.LDCT_index][start_pos: end_pos]
-                        raw_NDCT_chunk = self.NDCT_images[self.NDCT_index][start_pos: end_pos]
-
-                        sess.run(enqueue_op, feed_dict={queue_input: np.expand_dims(raw_LDCT_chunk, axis=-1), \
-                                                        queue_output: np.expand_dims(raw_NDCT_chunk, axis=-1)})
-                        start_pos += enqueue_size
-                    self.step += 1
-                if self.step > end_point:
-                    coord.request_stop()
-                sess.run(close_op)
-                '''
-            else:
-                self.step = 0
-                while not coord.should_stop():
-                    LDCT_imgs, NDCT_imgs = [], []
-                    for i in range(enqueue_size):
-                        if self.is_unpair:
-                            L_sltd_idx = np.random.choice(self.LDCT_index)
-                            N_sltd_idx = np.random.choice(self.NDCT_index)
-                        else:
-                            L_sltd_idx = N_sltd_idx = np.random.choice(self.LDCT_index)
-
-                        pat_LDCT, pat_NDCT = \
-                            self.get_randam_patches(self.LDCT_images[L_sltd_idx],
-                                                    self.NDCT_images[N_sltd_idx], image_size)
-                        LDCT_imgs.append(np.expand_dims(pat_LDCT, axis=-1))
-                        NDCT_imgs.append(np.expand_dims(pat_NDCT, axis=-1))
-                    sess.run(enqueue_op, feed_dict={queue_input: np.array(LDCT_imgs), \
-                                                    queue_output: np.array(NDCT_imgs)})
-                    self.step += 1
-                if self.step > end_point:
-                    coord.request_stop()
-                sess.run(close_op)
-
-        self.enqueue_threads = [threading.Thread(target=enqueue, args=(self.coord,)) for i in range(self.num_threads)]
-        for t in self.enqueue_threads: t.start()
-
-        return dequeue_op
-
 
 # ROI crop
 def ROI_img(whole_image, row=[200, 350], col=[75, 225]):
