@@ -25,10 +25,10 @@ def log10(x):
 
 
 def tf_psnr(img1, img2, PIXEL_MAX=255.0):
-    mse = tf.reduce_mean((img1 - img2) ** 2)
+    mse = tf.math.reduce_mean((img1 - img2) ** 2)
     if mse == 0:
-        return 100
-    return 20 * log10(PIXEL_MAX / tf.sqrt(mse))
+        return tf.constant(100, dtype=tf.float32)
+    return 20 * log10(tf.constant(PIXEL_MAX, dtype=tf.float32) / tf.math.sqrt(mse))
 
 
 def TaskID_Generator():

@@ -86,7 +86,7 @@ class cycle_identity(object):
         """
         set check point
         """
-        self.ckpt = tf.train.Checkpoint(step=tf.Variable(0), generator_G=self.generator_G, generator_F=self.generator_F,
+        self.ckpt = tf.train.Checkpoint(step=tf.Variable(0, dtype=tf.int64), generator_G=self.generator_G, generator_F=self.generator_F,
                                         discriminator_X=self.discriminator_X, discriminator_Y=self.discriminator_Y,
                                         generator_optimizer=tf.keras.optimizers.Adam(learning_rate=args.lr, beta_1=args.beta1, beta_2=args.beta2),
                                         discriminator_optimizer=tf.keras.optimizers.Adam(learning_rate=args.lr, beta_1=args.beta1, beta_2=args.beta2))
@@ -133,7 +133,7 @@ class cycle_identity(object):
                 D_loss_Y = (D_loss_patch_Y + D_loss_patch_GX)
                 D_loss_X = (D_loss_patch_X + D_loss_patch_FY)
                 D_loss = (D_loss_X + D_loss_Y) / 2
-
+                
                 #### loss summary
                 # generator
                 with tf.name_scope("Generator_loss"):
@@ -150,7 +150,7 @@ class cycle_identity(object):
                     tf.summary.scalar(name="3_D_loss_GX", data=D_loss_patch_GX, step=step)
                     tf.summary.scalar(name="4_D_loss_X", data=D_loss_patch_X, step=step)
                     tf.summary.scalar(name="5_D_loss_FY", data=D_loss_patch_FY, step=step)
-
+                
             # get gradients values from tape
             generator_g_gradients = tape.gradient(G_loss,
                                                   self.generator_G.trainable_variables)
@@ -213,6 +213,13 @@ class cycle_identity(object):
             G_X = self.generator_G(sample_whole_X, training=False)
             F_Y = self.generator_F(sample_whole_Y, training=False)
 
+            with self.writer.as_default():
+                with tf.name_scope("PSNR"):
+                    tf.summary.scalar(name="1_psnr", step=step,
+                                      data=ut.tf_psnr(sample_whole_X, sample_whole_Y, 2))  # -1 ~ 1
+                    tf.summary.scalar(name="2_psnr_AtoB", step=step, data=ut.tf_psnr(sample_whole_Y, G_X, 2))
+                    tf.summary.scalar(name="2_psnr_BtoA", step=step, data=ut.tf_psnr(sample_whole_X, F_Y, 2))
+
             # re-scale for Tensorboard
             sample_whole_X = ut.rescale_arr(data=sample_whole_X,
                                             i_min=tf.math.reduce_min(sample_whole_X),
@@ -235,11 +242,7 @@ class cycle_identity(object):
                     tf.summary.image(name="sample_whole_Y", step=step, data=sample_whole_Y, max_outputs=1)
                     tf.summary.image(name="G(sample_whole_X)", step=step, data=G_X, max_outputs=1)
                     tf.summary.image(name="F(sample_whole_Y)", step=step, data=F_Y, max_outputs=1)
-                with tf.name_scope("PSNR"):
-                    tf.summary.scalar(name="1_psnr", step=step,
-                                      data=ut.tf_psnr(sample_whole_X, sample_whole_Y, 2))  # -1 ~ 1
-                    tf.summary.scalar(name="2_psnr_AtoB", step=step, data=ut.tf_psnr(sample_whole_Y, G_X, 2))
-                    tf.summary.scalar(name="2_psnr_BtoA", step=step, data=ut.tf_psnr(sample_whole_X, F_Y, 2))
+
 
         # #############################
         # pre-trained model load
@@ -253,29 +256,32 @@ class cycle_identity(object):
         print('Start point : step : {}'.format(current_step))
 
         # 한 에폭을 진행하는데 필요한 스탭 계산
-        steps_per_epoch = min(len(self.train_image_loader.LDCT_image_name),
-                              len(self.train_image_loader.NDCT_image_name)) // args.batch_size
+        steps_per_epoch = min(len(self.train_image_loader.LDCT_image_name), len(self.train_image_loader.NDCT_image_name)) // args.batch_size
 
         # decay learning rate
         d_optim = tf.keras.optimizers.Adam(learning_rate=args.lr, beta_1=args.beta1, beta_2=args.beta2)
         g_optim = tf.keras.optimizers.Adam(learning_rate=args.lr, beta_1=args.beta1, beta_2=args.beta2)
 
-        start_time = time.time()
+        start_time = current_time = time.time()
         for epoch in range(args.epoch):
             step_count = 0  # for counting steps per epoch
             for patch_X, patch_Y in tf.data.Dataset.zip((self.patch_X_set, self.patch_Y_set)):
-                train_step(patch_X, patch_Y, g_optim, d_optim, current_step)  # one step
+                train_step(patch_X, patch_Y, g_optim, d_optim, self.ckpt.step)  # one step
                 # update step counters
                 current_step += 1
                 step_count += 1
                 self.ckpt.step.assign_add(1)
 
                 if current_step % args.print_freq == 0:
-                    print(("Epoch: {} {}/{} time: {} ".format(epoch, step_count, steps_per_epoch,
-                                                              time.time() - start_time)))
+                    tmp_time = time.time()
+                    print(("Epoch: {} {}/{} time: {:.3f}s per step".format(epoch, step_count, steps_per_epoch,
+                                                              (tmp_time - current_time) / args.print_freq)))
+                    current_time = tmp_time
                     # summary with sample images
+                    print("Sample summary...")
                     check_train_sample(patch_X, patch_Y, current_step)
                     check_test_sample(current_step)
+                    print("done")
 
                 if current_step % args.save_freq == 0:
                     # checkpoint
@@ -283,7 +289,7 @@ class cycle_identity(object):
 
     # save model
     def save(self, args, step):
-        save_file_name = args.model + ".model." + "step_" + str(step)
+        save_file_name = "cycle_identity.model." + "step_" + str(step)
         self.checkpoint_dir = os.path.join('.', self.checkpoint_dir)
 
         if not os.path.exists(self.checkpoint_dir):
