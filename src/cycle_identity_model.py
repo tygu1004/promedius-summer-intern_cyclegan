@@ -44,35 +44,26 @@ class cycle_identity(object):
 
         t1 = time.time()
         if args.phase == 'train':
-            self.train_image_loader = ut.DCMDataLoader(args.dcm_path,
-                                                       image_size=args.whole_size, patch_size=args.patch_size,
-                                                       depth=args.img_channel,
+            self.train_image_loader = ut.DCMDataLoader(args.dcm_path, image_size=args.whole_size,
+                                                       patch_size=args.patch_size,
                                                        image_max=args.img_vmax, image_min=args.img_vmin,
-                                                       batch_size=args.batch_size,
-                                                       is_unpair=args.unpair, model=args.model)
-            self.test_image_loader = ut.DCMDataLoader(args.dcm_path,
-                                                      image_size=args.whole_size, patch_size=args.patch_size,
-                                                      depth=args.img_channel,
+                                                       batch_size=args.batch_size)
+            self.test_image_loader = ut.DCMDataLoader(args.dcm_path, image_size=args.whole_size,
+                                                      patch_size=args.patch_size,
                                                       image_max=args.img_vmax, image_min=args.img_vmin,
-                                                      batch_size=args.batch_size,
-                                                      is_unpair=args.unpair, model=args.model)
+                                                      batch_size=args.batch_size)
             self.train_image_loader(args.train_patient_no_A, args.train_patient_no_B)
             self.test_image_loader(args.test_patient_no_A, args.test_patient_no_B)
             self.patch_X_set, self.patch_Y_set = self.train_image_loader.get_train_set(args.patch_size)
             self.whole_X_set, self.whole_Y_set = self.test_image_loader.get_test_set()
-            print('data load complete !!!, {}\nN_train : {}, N_test : {}'.format(time.time() - t1,
-                                                                                 len(
-                                                                                     self.train_image_loader.LDCT_image_name),
-                                                                                 len(
-                                                                                     self.test_image_loader.LDCT_image_name)))
-
+            print('data load complete !!!, {}\n'.format(time.time() - t1))
+            print('N_train : {}, N_test : {}'.format(len(self.train_image_loader.LDCT_image_name),
+                                                     len(self.test_image_loader.LDCT_image_name)))
         else:
-            self.test_image_loader = ut.DCMDataLoader(args.dcm_path,
-                                                      image_size=args.whole_size, patch_size=args.patch_size,
-                                                      depth=args.img_channel,
+            self.test_image_loader = ut.DCMDataLoader(args.dcm_path, image_size=args.whole_size,
+                                                      patch_size=args.patch_size,
                                                       image_max=args.img_vmax, image_min=args.img_vmin,
-                                                      batch_size=args.batch_size,
-                                                      is_unpair=args.unpair, model=args.model)
+                                                      batch_size=args.batch_size)
             self.test_image_loader(args.test_patient_no_A, args.test_patient_no_B)
             self.whole_X_set, self.whole_Y_set = self.test_image_loader.get_test_set()
             print('data load complete !!!, {}, N_test : {}'.format(time.time() - t1,
@@ -95,17 +86,10 @@ class cycle_identity(object):
         """
         set check point
         """
-        self.ckpt = tf.train.Checkpoint(step=tf.Variable(0),
-                                        generator_G=self.generator_G,
-                                        generator_F=self.generator_F,
-                                        discriminator_X=self.discriminator_X,
-                                        discriminator_Y=self.discriminator_Y,
-                                        generator_optimizer=tf.keras.optimizers.Adam(learning_rate=args.lr,
-                                                                                     beta_1=args.beta1,
-                                                                                     beta_2=args.beta2),
-                                        discriminator_optimizer=tf.keras.optimizers.Adam(learning_rate=args.lr,
-                                                                                         beta_1=args.beta1,
-                                                                                         beta_2=args.beta2))
+        self.ckpt = tf.train.Checkpoint(step=tf.Variable(0), generator_G=self.generator_G, generator_F=self.generator_F,
+                                        discriminator_X=self.discriminator_X, discriminator_Y=self.discriminator_Y,
+                                        generator_optimizer=tf.keras.optimizers.Adam(learning_rate=args.lr, beta_1=args.beta1, beta_2=args.beta2),
+                                        discriminator_optimizer=tf.keras.optimizers.Adam(learning_rate=args.lr, beta_1=args.beta1, beta_2=args.beta2))
         """
         Summary writer (TensorBoard)
         """
@@ -122,8 +106,8 @@ class cycle_identity(object):
                 F_Y = self.generator_F(patch_Y)
                 G_FY = self.generator_G(F_Y)
 
-                G_Y = self.generator_G(patch_Y)     # IDENT
-                F_X = self.generator_F(patch_X)     # IDENT
+                G_Y = self.generator_G(patch_Y)  # IDENT
+                F_X = self.generator_F(patch_X)  # IDENT
 
                 # Discriminator forward
                 D_GX = self.discriminator_Y(G_X)
@@ -138,7 +122,7 @@ class cycle_identity(object):
                 G_loss_X2Y = md.least_square(D_GX, tf.ones_like(D_GX))
                 G_loss_Y2X = md.least_square(D_FY, tf.ones_like(D_FY))
 
-                G_loss = G_loss_X2Y + G_loss_Y2X + cycle_loss + identity_loss   # GAN LOSS
+                G_loss = G_loss_X2Y + G_loss_Y2X + cycle_loss + identity_loss  # GAN LOSS
 
                 # discriminator loss
                 D_loss_patch_Y = md.least_square(D_Y, tf.ones_like(D_Y))
@@ -195,22 +179,22 @@ class cycle_identity(object):
         def check_train_sample(patch_X_batch, patch_Y_batch, step):
             patch_X = tf.expand_dims(patch_X_batch[0], axis=0)  # Select the first patched image of batch
             patch_Y = tf.expand_dims(patch_Y_batch[0], axis=0)  # And expand dimension to (1, patch_size, patch_size, 1)
-            G_X = self.generator_G(patch_X, training=False)     # Inference mode,
-            F_Y = self.generator_F(patch_Y, training=False)     # set training=False for normalization layer
+            G_X = self.generator_G(patch_X, training=False)  # Inference mode,
+            F_Y = self.generator_F(patch_Y, training=False)  # set training=False for normalization layer
 
             # re-scale for Tensorboard
-            patch_X = self.train_image_loader.rescale_arr(data=patch_X, i_min=tf.math.reduce_min(patch_X),
-                                                          i_max=tf.math.reduce_max(patch_X), o_min=0, o_max=255,
-                                                          out_dtype=tf.uint8)
-            patch_Y = self.train_image_loader.rescale_arr(data=patch_Y, i_min=tf.math.reduce_min(patch_Y),
-                                                          i_max=tf.math.reduce_max(patch_Y), o_min=0, o_max=255,
-                                                          out_dtype=tf.uint8)
-            G_X = self.test_image_loader.rescale_arr(data=G_X, i_min=tf.math.reduce_min(G_X),
-                                                     i_max=tf.math.reduce_max(G_X), o_min=0, o_max=255,
-                                                     out_dtype=tf.uint8)
-            F_Y = self.test_image_loader.rescale_arr(data=F_Y, i_min=tf.math.reduce_min(F_Y),
-                                                     i_max=tf.math.reduce_max(F_Y), o_min=0, o_max=255,
-                                                     out_dtype=tf.uint8)
+            patch_X = ut.rescale_arr(data=patch_X, i_min=tf.math.reduce_min(patch_X),
+                                     i_max=tf.math.reduce_max(patch_X), o_min=0, o_max=255,
+                                     out_dtype=tf.uint8)
+            patch_Y = ut.rescale_arr(data=patch_Y, i_min=tf.math.reduce_min(patch_Y),
+                                     i_max=tf.math.reduce_max(patch_Y), o_min=0, o_max=255,
+                                     out_dtype=tf.uint8)
+            G_X = ut.rescale_arr(data=G_X, i_min=tf.math.reduce_min(G_X),
+                                 i_max=tf.math.reduce_max(G_X), o_min=0, o_max=255,
+                                 out_dtype=tf.uint8)
+            F_Y = ut.rescale_arr(data=F_Y, i_min=tf.math.reduce_min(F_Y),
+                                 i_max=tf.math.reduce_max(F_Y), o_min=0, o_max=255,
+                                 out_dtype=tf.uint8)
 
             with self.writer.as_default():
                 with tf.name_scope("check_train_sample"):
@@ -230,20 +214,20 @@ class cycle_identity(object):
             F_Y = self.generator_F(sample_whole_Y, training=False)
 
             # re-scale for Tensorboard
-            sample_whole_X = self.train_image_loader.rescale_arr(data=sample_whole_X,
-                                                                 i_min=tf.math.reduce_min(sample_whole_X),
-                                                                 i_max=tf.math.reduce_max(sample_whole_X), o_min=0,
-                                                                 o_max=255, out_dtype=tf.uint8)
-            sample_whole_Y = self.train_image_loader.rescale_arr(data=sample_whole_Y,
-                                                                 i_min=tf.math.reduce_min(sample_whole_Y),
-                                                                 i_max=tf.math.reduce_max(sample_whole_Y), o_min=0,
-                                                                 o_max=255, out_dtype=tf.uint8)
-            G_X = self.test_image_loader.rescale_arr(data=G_X, i_min=tf.math.reduce_min(G_X),
-                                                     i_max=tf.math.reduce_max(G_X), o_min=0, o_max=255,
-                                                     out_dtype=tf.uint8)
-            F_Y = self.test_image_loader.rescale_arr(data=F_Y, i_min=tf.math.reduce_min(F_Y),
-                                                     i_max=tf.math.reduce_max(F_Y), o_min=0, o_max=255,
-                                                     out_dtype=tf.uint8)
+            sample_whole_X = ut.rescale_arr(data=sample_whole_X,
+                                            i_min=tf.math.reduce_min(sample_whole_X),
+                                            i_max=tf.math.reduce_max(sample_whole_X), o_min=0,
+                                            o_max=255, out_dtype=tf.uint8)
+            sample_whole_Y = ut.rescale_arr(data=sample_whole_Y,
+                                            i_min=tf.math.reduce_min(sample_whole_Y),
+                                            i_max=tf.math.reduce_max(sample_whole_Y), o_min=0,
+                                            o_max=255, out_dtype=tf.uint8)
+            G_X = ut.rescale_arr(data=G_X, i_min=tf.math.reduce_min(G_X),
+                                 i_max=tf.math.reduce_max(G_X), o_min=0, o_max=255,
+                                 out_dtype=tf.uint8)
+            F_Y = ut.rescale_arr(data=F_Y, i_min=tf.math.reduce_min(F_Y),
+                                 i_max=tf.math.reduce_max(F_Y), o_min=0, o_max=255,
+                                 out_dtype=tf.uint8)
 
             with self.writer.as_default():
                 with tf.name_scope("check_test_sample"):
@@ -252,7 +236,8 @@ class cycle_identity(object):
                     tf.summary.image(name="G(sample_whole_X)", step=step, data=G_X, max_outputs=1)
                     tf.summary.image(name="F(sample_whole_Y)", step=step, data=F_Y, max_outputs=1)
                 with tf.name_scope("PSNR"):
-                    tf.summary.scalar(name="1_psnr", step=step, data=ut.tf_psnr(sample_whole_X, sample_whole_Y, 2))  # -1 ~ 1
+                    tf.summary.scalar(name="1_psnr", step=step,
+                                      data=ut.tf_psnr(sample_whole_X, sample_whole_Y, 2))  # -1 ~ 1
                     tf.summary.scalar(name="2_psnr_AtoB", step=step, data=ut.tf_psnr(sample_whole_Y, G_X, 2))
                     tf.summary.scalar(name="2_psnr_BtoA", step=step, data=ut.tf_psnr(sample_whole_X, F_Y, 2))
 
@@ -279,7 +264,7 @@ class cycle_identity(object):
         for epoch in range(args.epoch):
             step_count = 0  # for counting steps per epoch
             for patch_X, patch_Y in tf.data.Dataset.zip((self.patch_X_set, self.patch_Y_set)):
-                train_step(patch_X, patch_Y, g_optim, d_optim, current_step)    # one step
+                train_step(patch_X, patch_Y, g_optim, d_optim, current_step)  # one step
                 # update step counters
                 current_step += 1
                 step_count += 1
