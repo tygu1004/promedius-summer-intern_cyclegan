@@ -31,6 +31,29 @@ def tf_psnr(img1, img2, PIXEL_MAX=255.0):
     return 20 * log10(tf.constant(PIXEL_MAX, dtype=tf.float32) / tf.math.sqrt(mse))
 
 
+def ParseBoolean (b):
+    b = b.lower()
+    if b == 'true':
+        return True
+    elif b == 'false':
+        return False
+    else:
+        raise ValueError ('Cannot parse string into boolean.')
+        
+        
+# argparser string -> boolean type
+def ParseList(s):
+    l = []
+    if s.endswith('.txt'):
+        f = open(s, 'r')
+        lines = f.read().splitlines()
+        for line in lines:
+            l.append(os.path.splitext(line)[0])
+    else:
+        l = s.split(',')
+    return l
+
+
 def TaskID_Generator():
     currentTime = datetime.now()
     strTime = "%04d%02d%02d_%02d%02d%02d" % (
