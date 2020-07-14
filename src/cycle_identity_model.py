@@ -86,10 +86,15 @@ class cycle_identity(object):
         """
         set check point
         """
-        self.ckpt = tf.train.Checkpoint(step=tf.Variable(0, dtype=tf.int64), generator_G=self.generator_G, generator_F=self.generator_F,
+        self.ckpt = tf.train.Checkpoint(step=tf.Variable(0, dtype=tf.int64), generator_G=self.generator_G,
+                                        generator_F=self.generator_F,
                                         discriminator_X=self.discriminator_X, discriminator_Y=self.discriminator_Y,
-                                        generator_optimizer=tf.keras.optimizers.Adam(learning_rate=args.lr, beta_1=args.beta1, beta_2=args.beta2),
-                                        discriminator_optimizer=tf.keras.optimizers.Adam(learning_rate=args.lr, beta_1=args.beta1, beta_2=args.beta2))
+                                        generator_optimizer=tf.keras.optimizers.Adam(learning_rate=args.lr,
+                                                                                     beta_1=args.beta1,
+                                                                                     beta_2=args.beta2),
+                                        discriminator_optimizer=tf.keras.optimizers.Adam(learning_rate=args.lr,
+                                                                                         beta_1=args.beta1,
+                                                                                         beta_2=args.beta2))
         """
         Summary writer (TensorBoard)
         """
@@ -133,7 +138,7 @@ class cycle_identity(object):
                 D_loss_Y = (D_loss_patch_Y + D_loss_patch_GX)
                 D_loss_X = (D_loss_patch_X + D_loss_patch_FY)
                 D_loss = (D_loss_X + D_loss_Y) / 2
-                
+
                 #### loss summary
                 # generator
                 with tf.name_scope("Generator_loss"):
@@ -150,7 +155,7 @@ class cycle_identity(object):
                     tf.summary.scalar(name="3_D_loss_GX", data=D_loss_patch_GX, step=step)
                     tf.summary.scalar(name="4_D_loss_X", data=D_loss_patch_X, step=step)
                     tf.summary.scalar(name="5_D_loss_FY", data=D_loss_patch_FY, step=step)
-                
+
             # get gradients values from tape
             generator_g_gradients = tape.gradient(G_loss,
                                                   self.generator_G.trainable_variables)
@@ -243,7 +248,6 @@ class cycle_identity(object):
                     tf.summary.image(name="G(sample_whole_X)", step=step, data=G_X, max_outputs=1)
                     tf.summary.image(name="F(sample_whole_Y)", step=step, data=F_Y, max_outputs=1)
 
-
         # #############################
         # pre-trained model load
         # start_step : load SUCCESS -> current_step을 checkpoint.step에 의해 초기화... // failed -> 0
@@ -256,7 +260,8 @@ class cycle_identity(object):
         print('Start point : step : {}'.format(current_step))
 
         # 한 에폭을 진행하는데 필요한 스탭 계산
-        steps_per_epoch = min(len(self.train_image_loader.LDCT_image_name), len(self.train_image_loader.NDCT_image_name)) // args.batch_size
+        steps_per_epoch = min(len(self.train_image_loader.LDCT_image_name),
+                              len(self.train_image_loader.NDCT_image_name)) // args.batch_size
 
         # decay learning rate
         d_optim = tf.keras.optimizers.Adam(learning_rate=args.lr, beta_1=args.beta1, beta_2=args.beta2)
@@ -274,8 +279,7 @@ class cycle_identity(object):
 
                 if current_step % args.print_freq == 0:
                     tmp_time = time.time()
-                    print(("Epoch: {} {}/{} time: {:.3f}s per step".format(epoch, step_count, steps_per_epoch,
-                                                              (tmp_time - current_time) / args.print_freq)))
+                    print(("Epoch: {} {}/{} time: {:.3f}s per step".format(epoch, step_count, steps_per_epoch, (tmp_time - current_time) / args.print_freq)))
                     current_time = tmp_time
                     # summary with sample images
                     print("Sample summary...")

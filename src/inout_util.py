@@ -13,7 +13,7 @@ import os
 from glob import glob
 import tensorflow as tf
 import numpy as np
-import dicom
+import pydicom
 from datetime import datetime
 
 
@@ -47,7 +47,7 @@ def rescale_arr(data, i_min, i_max, o_min, o_max, out_dtype=None):
 
 
 def load_scan(path):
-    slices = [dicom.read_file(s) for s in path]
+    slices = [pydicom.dcmread(s) for s in path]
     slices.sort(key=lambda x: float(x.ImagePositionPatient[2]))
     try:
         slice_thickness = \
@@ -131,9 +131,6 @@ class DCMDataLoader(object):
         self.LDCT_images = np.concatenate(tuple(p_LDCT), axis=0)
         self.NDCT_images = np.concatenate(tuple(p_NDCT), axis=0)
 
-        # image index
-        self.LDCT_index, self.NDCT_index = list(range(len(self.LDCT_images))), list(range(len(self.NDCT_images)))
-
     def get_train_set(self, patch_size, whole_size=512):
         whole_h = whole_w = whole_size
         h = w = patch_size
@@ -148,10 +145,11 @@ class DCMDataLoader(object):
         ldct_patch_set = tf.data.Dataset.from_tensor_slices(tf.expand_dims(self.LDCT_images, axis=-1))
         ndct_patch_set = tf.data.Dataset.from_tensor_slices(tf.expand_dims(self.NDCT_images, axis=-1))
 
-        ldct_patch_set = ldct_patch_set.map(
-            lambda x: x[h_pc - hd: int(h_pc + np.round(h / 2)), w_pc - wd: int(w_pc + np.round(h / 2))])
-        ndct_patch_set = ndct_patch_set.map(
-            lambda x: x[h_pc - hd: int(h_pc + np.round(h / 2)), w_pc - wd: int(w_pc + np.round(h / 2))])
+        def patching(x):
+            return x[h_pc - hd: int(h_pc + np.round(h / 2)), w_pc - wd: int(w_pc + np.round(h / 2))]
+
+        ldct_patch_set = ldct_patch_set.map(patching, num_parallel_calls=tf.data.experimental.AUTOTUNE, deterministic=False)
+        ndct_patch_set = ndct_patch_set.map(patching, num_parallel_calls=tf.data.experimental.AUTOTUNE, deterministic=False)
 
         ldct_patch_set = ldct_patch_set.batch(self.batch_size)
         ndct_patch_set = ndct_patch_set.batch(self.batch_size)
