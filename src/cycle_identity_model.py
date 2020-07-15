@@ -57,17 +57,15 @@ class cycle_identity(object):
             self.patch_X_set, self.patch_Y_set = self.train_image_loader.get_train_set(args.patch_size)
             self.whole_X_set, self.whole_Y_set = self.test_image_loader.get_test_set()
             print('data load complete !!!, {}\n'.format(time.time() - t1))
-            print('N_train : {}, N_test : {}'.format(len(self.train_image_loader.LDCT_image_name),
-                                                     len(self.test_image_loader.LDCT_image_name)))
+            print('N_train : {}, N_test : {}'.format(self.train_image_loader.LDCT_images_size, self.test_image_loader.LDCT_images_size))
         else:
             self.test_image_loader = ut.DCMDataLoader(args.dcm_path, image_size=args.whole_size,
                                                       patch_size=args.patch_size,
                                                       image_max=args.img_vmax, image_min=args.img_vmin,
-                                                      batch_size=args.batch_size)
+                                                      batch_size=args.batch_size, phase=args.phase)
             self.test_image_loader(args.test_patient_no_A, args.test_patient_no_B)
             self.whole_X_set, self.whole_Y_set = self.test_image_loader.get_test_set()
-            print('data load complete !!!, {}, N_test : {}'.format(time.time() - t1,
-                                                                   len(self.test_image_loader.LDCT_image_name)))
+            print('data load complete !!!, {}, N_test : {}'.format(time.time() - t1, self.test_image_loader.LDCT_images_size))
 
         """
         build model
@@ -213,8 +211,8 @@ class cycle_identity(object):
         def check_test_sample(step):
             # take arbitrary sample in test_set
             buffer_size = 1000
-            sample_whole_X = tf.constant(list(self.whole_X_set.shuffle(buffer_size).take(1).as_numpy_iterator()))
-            sample_whole_Y = tf.constant(list(self.whole_Y_set.shuffle(buffer_size).take(1).as_numpy_iterator()))
+            sample_whole_X = tf.constant(list(self.whole_X_set.shuffle(buffer_size).take(1).as_numpy_iterator())[0])
+            sample_whole_Y = tf.constant(list(self.whole_Y_set.shuffle(buffer_size).take(1).as_numpy_iterator())[0])
             G_X = self.generator_G(sample_whole_X, training=False)
             F_Y = self.generator_F(sample_whole_Y, training=False)
 
@@ -260,8 +258,7 @@ class cycle_identity(object):
         print('Start point : step : {}'.format(current_step))
 
         # 한 에폭을 진행하는데 필요한 스탭 계산
-        steps_per_epoch = min(len(self.train_image_loader.LDCT_image_name),
-                              len(self.train_image_loader.NDCT_image_name)) // args.batch_size
+        steps_per_epoch = min(self.train_image_loader.LDCT_images_size, self.train_image_loader.NDCT_images_size) // args.batch_size
 
         # decay learning rate
         d_optim = tf.keras.optimizers.Adam(learning_rate=args.lr, beta_1=args.beta1, beta_2=args.beta2)
@@ -317,10 +314,12 @@ class cycle_identity(object):
             return False, 0
 
     def test(self, args):
-        if self.load():
+        is_load, _ = self.load()
+        if is_load:
             print(" [*] Load SUCCESS")
         else:
             print(" [!] Load failed...")
+            return
 
         ## mk save dir (image & numpy file)    
         npy_save_dir = os.path.join(args.test_npy_save_dir, self.taskID)
@@ -330,14 +329,12 @@ class cycle_identity(object):
 
         ## test
         for idx, test_X in enumerate(self.whole_X_set):
-            test_X = tf.expand_dims(test_X, axis=0)
             mk_G_X = self.generator_G(test_X)
             save_file_nm_g = 'Gen_from_' + self.test_image_loader.LDCT_image_name[idx]
 
             np.save(os.path.join(npy_save_dir, save_file_nm_g), mk_G_X)  # save as shape [1, whole_size, whole_size, 1]
 
         for idx, test_Y in enumerate(self.whole_Y_set):
-            test_Y = tf.expand_dims(test_Y, axis=0)
             mk_F_Y = self.generator_F(test_Y)
             save_file_nm_f = 'Gen_from_' + self.test_image_loader.NDCT_image_name[idx]
 

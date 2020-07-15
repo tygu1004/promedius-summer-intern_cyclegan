@@ -31,16 +31,16 @@ def tf_psnr(img1, img2, PIXEL_MAX=255.0):
     return 20 * log10(tf.constant(PIXEL_MAX, dtype=tf.float32) / tf.math.sqrt(mse))
 
 
-def ParseBoolean (b):
+def ParseBoolean(b):
     b = b.lower()
     if b == 'true':
         return True
     elif b == 'false':
         return False
     else:
-        raise ValueError ('Cannot parse string into boolean.')
-        
-        
+        raise ValueError('Cannot parse string into boolean.')
+
+
 # argparser string -> boolean type
 def ParseList(s):
     l = []
@@ -82,37 +82,55 @@ def load_scan(path):
     return slices
 
 
-def get_pixels_hu(slices, pre_fix_nm=''):
-    image = np.stack([s.pixel_array for s in slices])
+def get_pixel_hu(dcm_file):
+    image = dcm_file.pixel_array
+    intercept = dcm_file.RescaleIntercept
+    slope = dcm_file.RescaleSlope
+
     image = image.astype(np.int16)
     image[image == -2000] = 0
+    if slope != 1:
+        image = slope * image.astype(np.float32)
+        image = image.astype(np.int16)
+    image += np.int16(intercept)
 
+    image = tf.expand_dims(image, axis=-1)
+
+    return image
+
+
+def dcm_read(path):
+    path = path.numpy().decode('utf-8')
+    dcm_file = pydicom.dcmread(path)
+
+    img = get_pixel_hu(dcm_file)
+
+    return img
+
+
+def read_function(fn):
+    out = tf.py_function(dcm_read, [fn], tf.int16)
+    return out
+
+
+def get_image_name(patent_no_list, length, domain_name):
     digit = 4
     slice_nm = []
-    for slice_number in range(len(slices)):
-        intercept = slices[slice_number].RescaleIntercept
-        slope = slices[slice_number].RescaleSlope
-        if slope != 1:
-            image[slice_number] = slope * image[slice_number].astype(np.float32)
-            image[slice_number] = image[slice_number].astype(np.int16)
-        image[slice_number] += np.int16(intercept)
 
-        # sorted(idx), sorted(d_idx)  -> [1, 10, 2], [ 0001, 0002, 0010]
-        s_idx = str(slice_number)
-        d_idx = '0' * (digit - len(s_idx)) + s_idx
-        slice_nm.append(pre_fix_nm + '_' + d_idx)
-    return np.array(image, dtype=np.int16), slice_nm
+    # sorted(idx), sorted(d_idx)  -> [1, 10, 2], [ 0001, 0002, 0010]
+    for patent_no in patent_no_list:
+        pre_fix_nm = '{}_{}'.format(patent_no, domain_name)
+        for slice_number in range(length):
+            s_idx = str(slice_number)
+            d_idx = '0' * (digit - len(s_idx)) + s_idx
+            slice_nm.append(pre_fix_nm + '_' + d_idx)
 
-
-def normalize(img, max_=3071, min_=-1024):
-    img = img.astype(np.float32)
-    img = (img - min_) / (max_ - min_)
-    return img
+    return slice_nm
 
 
 class DCMDataLoader(object):
     def __init__(self, dcm_path, image_size=512, patch_size=64, image_max=3071,
-                 image_min=-1024, batch_size=1, extension='dcm'):
+                 image_min=-1024, batch_size=1, extension='dcm', phase='train'):
         # dicom file dir
         self.extension = extension
         self.dcm_path = dcm_path
@@ -127,32 +145,45 @@ class DCMDataLoader(object):
         self.batch_size = batch_size
 
         # CT slice name
+        self.phase = phase
         self.LDCT_image_name, self.NDCT_image_name = [], []
+
+        self.LDCT_images_size = 0
+        self.NDCT_images_size = 0
 
     # dicom file -> numpy array
     def __call__(self, patent_no_list_A, patent_no_list_B):
-        def get_images(patent_no_list, domain_name):
-            p = []
-            image_name = []
+        def normalize(img):
+            img = tf.cast(img, tf.float32)
+            img = (img - self.image_min) / (self.image_max - self.image_min)
+            return img
+
+        def get_image_dataset(patent_no_list):
+            path_pattern_list = [os.path.join(self.dcm_path, patent_no, '*.' + self.extension) for patent_no in patent_no_list]
+            p_path = tf.data.Dataset.list_files(path_pattern_list)
+
+            # if self.extension == 'dcm':
+            p = p_path.map(read_function, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+            # normalization
+            p = p.map(normalize, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+            return p
+
+        def len_image_dataset(patent_no_list):
+            data_size = 0
             for patent_no in patent_no_list:
-                p_path = glob(os.path.join(self.dcm_path, patent_no, '*.' + self.extension))
-                # load images
-                org_images, slice_nm = get_pixels_hu(load_scan(p_path),
-                                                     '{}_{}'.format(patent_no, domain_name))
+                pattern = os.path.join(self.dcm_path, patent_no, '*.' + self.extension)
+                data_size += len(glob(pattern))
+            return data_size
 
-                # CT slice name
-                image_name.extend(slice_nm)
+        self.LDCT_images = get_image_dataset(patent_no_list_A)
+        self.LDCT_images_size = len_image_dataset(patent_no_list_A)
 
-                # normalization
-                p.append(normalize(org_images, self.image_max, self.image_min))
+        self.NDCT_images = get_image_dataset(patent_no_list_B)
+        self.NDCT_images_size = len_image_dataset(patent_no_list_B)
 
-            return p, image_name
-
-        p_LDCT, self.LDCT_image_name = get_images(patent_no_list_A, 'A')
-        p_NDCT, self.NDCT_image_name = get_images(patent_no_list_B, 'B')
-
-        self.LDCT_images = np.concatenate(tuple(p_LDCT), axis=0)
-        self.NDCT_images = np.concatenate(tuple(p_NDCT), axis=0)
+        if self.phase != 'train':
+            self.LDCT_image_name = get_image_name(patent_no_list_A, self.LDCT_images_size, 'A')
+            self.NDCT_image_name = get_image_name(patent_no_list_B, self.NDCT_images_size, 'B')
 
     def get_train_set(self, patch_size, whole_size=512):
         whole_h = whole_w = whole_size
@@ -165,14 +196,11 @@ class DCMDataLoader(object):
         # patch image center(coordinate on whole image)
         h_pc, w_pc = np.random.choice(range(hd, hu + 1)), np.random.choice(range(wd, wu + 1))
 
-        ldct_patch_set = tf.data.Dataset.from_tensor_slices(tf.expand_dims(self.LDCT_images, axis=-1))
-        ndct_patch_set = tf.data.Dataset.from_tensor_slices(tf.expand_dims(self.NDCT_images, axis=-1))
-
         def patching(x):
             return x[h_pc - hd: int(h_pc + np.round(h / 2)), w_pc - wd: int(w_pc + np.round(h / 2))]
 
-        ldct_patch_set = ldct_patch_set.map(patching, num_parallel_calls=tf.data.experimental.AUTOTUNE, deterministic=False)
-        ndct_patch_set = ndct_patch_set.map(patching, num_parallel_calls=tf.data.experimental.AUTOTUNE, deterministic=False)
+        ldct_patch_set = self.LDCT_images.map(patching, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+        ndct_patch_set = self.NDCT_images.map(patching, num_parallel_calls=tf.data.experimental.AUTOTUNE)
 
         ldct_patch_set = ldct_patch_set.batch(self.batch_size)
         ndct_patch_set = ndct_patch_set.batch(self.batch_size)
@@ -180,7 +208,4 @@ class DCMDataLoader(object):
         return ldct_patch_set, ndct_patch_set
 
     def get_test_set(self):
-        ldct_set = tf.data.Dataset.from_tensor_slices(tf.expand_dims(self.LDCT_images, axis=-1))
-        ndct_set = tf.data.Dataset.from_tensor_slices(tf.expand_dims(self.NDCT_images, axis=-1))
-
-        return ldct_set, ndct_set
+        return self.LDCT_images.batch(1), self.NDCT_images.batch(1)
