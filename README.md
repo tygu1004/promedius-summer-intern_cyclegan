@@ -16,16 +16,23 @@
 
   1. learning rate decay 방식 변경
   
-    기존의 코드는 "end_epoch"이라는 argument를 입력받아서 학습 과정이 "decay_epoch" 이상 진행 중일 때 learning rate를 decay 하는 방식이었습니다.
-    하지만 기존에 사용하는 Adam optimaizer에 decay되는 성질이 있기 때문에 위의 방식이 불필요하다고 생각했습니다.
-    그리고 위의 방식은 다른 시점에서 checkpoint를 이용하여 학습을 이어갈 때 완벽하게 동일한 상황을 재현하기가 어려웠습니다.
-    그래서 end_epoch과 decay_epoch을 이용하여 learning rate를 decay하는 방식을 포기하고 Adam의 성질 그대로를 이용하도록 변경하였습니다.
+    기존의 코드는 "end_epoch"이라는 argument를 입력받아서 학습 과정이
+    "decay_epoch" 이상 진행 중일 때 learning rate를 decay 하는 방식이었습니다.
+    하지만 기존에 사용하는 Adam optimaizer에 decay되는 성질이 있기 때문에
+    위의 방식이 불필요하다고 생각했습니다.
+    그리고 위의 방식은 다른 시점에서 checkpoint를 이용하여 학습을 이어갈 때
+    완벽하게 동일한 상황을 재현하기가 어려웠습니다.
+    그래서 end_epoch과 decay_epoch을 이용하여 learning rate를
+    decay하는 방식을 포기하고 Adam의 성질 그대로를 이용하도록 변경하였습니다.
     
   2. 학습 진행을 epoch에서 step단위로 변경
   
-    step 단위로 전체 학습과정을 생각하도록 바꾸었고 "epoch" argument를 추가하여 주어진 데이터를 몇 번 만큼 순회할 지 선택하였습니다.
-    기존 코드는 전체 데이터 크기가 너무 큰 관계로 한 epoch을 수행하는 것이 전체 데이터가 아닌 random하게 sample된 데이터를 "step_per_epoch"만큼만 학습하는 것이었습니다.
-    하지만 전체 데이터를 학습하는 것이 좋겠다고 생각했고 step 단위로 학습과정을 생각하게 되었으므로 "step_per_epoch"을 삭제하고 epoch을 전체 데이터를 순회하는 단위로 바꿨습니다.
+    step 단위로 전체 학습과정을 생각하도록 바꾸었고 "epoch" argument를 추가하여
+    주어진 데이터를 몇 번 만큼 순회할 지 선택하였습니다.
+    기존 코드는 전체 데이터 크기가 너무 큰 관계로 한 epoch을 수행하는 것이 전체 데이터가 아닌
+    random하게 sample된 데이터를 "step_per_epoch"만큼만 학습하는 것이었습니다.
+    하지만 전체 데이터를 학습하는 것이 좋겠다고 생각했고 step 단위로 학습과정을 생각하게
+    되었으므로 "step_per_epoch"을 삭제하고 epoch을 전체 데이터를 순회하는 단위로 바꿨습니다.
     
 # main.py argument 변경사항
   
