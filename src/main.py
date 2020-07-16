@@ -12,8 +12,6 @@ All rights reserved.
 
 import argparse
 import os
-import sys
-import tensorflow as tf
 from cycle_identity_model import cycle_identity
 import inout_util as ut
 
@@ -59,15 +57,12 @@ parser.add_argument('--nglf', dest='nglf', type=int, default=15, help='# of gen 
 parser.add_argument('--ndf', dest='ndf', type=int, default=64, help='# of discri filters in first conv layer')
 
 # others
-parser.add_argument('--steps_per_epoch', dest='steps_per_epoch', type=int, default=5000)
 parser.add_argument('--save_freq', dest='save_freq', type=int, default=2378 * 2,
                     help='save a model every save_freq (iteration)')
 parser.add_argument('--print_freq', dest='print_freq', type=int, default=100 * 2, help='print_freq (iterations)')
 parser.add_argument('--continue_train', dest='continue_train', type=ut.ParseBoolean, default=True,
                     help='load the latest model: true, false')
 parser.add_argument('--gpu_no', dest='gpu_no', type=int, default=0, help='gpu no')
-parser.add_argument('--unpair', dest='unpair', type=ut.ParseBoolean, default=True,
-                    help='unpaired image(cycle loss) : True|False')
 
 # -------------------------------------
 args = parser.parse_args()
