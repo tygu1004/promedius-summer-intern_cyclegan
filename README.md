@@ -50,7 +50,8 @@
   
   - 추가된 항목
   
-    '--epoch'
+    '--epoch' : 학습하고자 하는 epoch 수
     
-    '--data_path'
+    '--data_path' : 데이터가 저장된 디렉토리
  
+    '--expansion' : 데이터 파일 확장자 (dcm or pbg)
