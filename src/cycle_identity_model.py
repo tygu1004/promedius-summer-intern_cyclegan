@@ -44,14 +44,14 @@ class cycle_identity(object):
 
         t1 = time.time()
         if args.phase == 'train':
-            self.train_image_loader = ut.DCMDataLoader(args.dcm_path, image_size=args.whole_size,
+            self.train_image_loader = ut.DCMDataLoader(args.data_path, image_size=args.whole_size,
                                                        patch_size=args.patch_size,
                                                        image_max=args.img_vmax, image_min=args.img_vmin,
-                                                       batch_size=args.batch_size)
-            self.test_image_loader = ut.DCMDataLoader(args.dcm_path, image_size=args.whole_size,
+                                                       batch_size=args.batch_size, extension=args.extension)
+            self.test_image_loader = ut.DCMDataLoader(args.data_path, image_size=args.whole_size,
                                                       patch_size=args.patch_size,
                                                       image_max=args.img_vmax, image_min=args.img_vmin,
-                                                      batch_size=args.batch_size)
+                                                      batch_size=args.batch_size, extension=args.extension)
             self.train_image_loader(args.train_patient_no_A, args.train_patient_no_B)
             self.test_image_loader(args.test_patient_no_A, args.test_patient_no_B)
             self.patch_X_set, self.patch_Y_set = self.train_image_loader.get_train_set(args.patch_size)
@@ -59,10 +59,10 @@ class cycle_identity(object):
             print('data load complete !!!, {}\n'.format(time.time() - t1))
             print('N_train : {}, N_test : {}'.format(self.train_image_loader.LDCT_images_size, self.test_image_loader.LDCT_images_size))
         else:
-            self.test_image_loader = ut.DCMDataLoader(args.dcm_path, image_size=args.whole_size,
-                                                      patch_size=args.patch_size,
-                                                      image_max=args.img_vmax, image_min=args.img_vmin,
-                                                      batch_size=args.batch_size, phase=args.phase)
+            self.test_image_loader = ut.DCMDataLoader(args.data_path, image_size=args.whole_size,
+                                                      patch_size=args.patch_size, image_max=args.img_vmax,
+                                                      image_min=args.img_vmin, batch_size=args.batch_size,
+                                                      extension=args.extension, phase=args.phase)
             self.test_image_loader(args.test_patient_no_A, args.test_patient_no_B)
             self.whole_X_set, self.whole_Y_set = self.test_image_loader.get_test_set()
             print('data load complete !!!, {}, N_test : {}'.format(time.time() - t1, self.test_image_loader.LDCT_images_size))
@@ -210,7 +210,7 @@ class cycle_identity(object):
         # summary test-sample image during training
         def check_test_sample(step):
             # take arbitrary sample in test_set
-            buffer_size = 1000
+            buffer_size = 50
             sample_whole_X = tf.constant(list(self.whole_X_set.shuffle(buffer_size).take(1).as_numpy_iterator())[0])
             sample_whole_Y = tf.constant(list(self.whole_Y_set.shuffle(buffer_size).take(1).as_numpy_iterator())[0])
             G_X = self.generator_G(sample_whole_X, training=False)

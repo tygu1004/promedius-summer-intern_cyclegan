@@ -73,8 +73,7 @@ def load_scan(path):
     slices = [pydicom.dcmread(s) for s in path]
     slices.sort(key=lambda x: float(x.ImagePositionPatient[2]))
     try:
-        slice_thickness = \
-            np.abs(slices[0].ImagePositionPatient[2] - slices[1].ImagePositionPatient[2])
+        slice_thickness = np.abs(slices[0].ImagePositionPatient[2] - slices[1].ImagePositionPatient[2])
     except:
         slice_thickness = np.abs(slices[0].SliceLocation - slices[1].SliceLocation)
     for s in slices:
@@ -86,31 +85,32 @@ def get_pixel_hu(dcm_file):
     image = dcm_file.pixel_array
     intercept = dcm_file.RescaleIntercept
     slope = dcm_file.RescaleSlope
-
     image = image.astype(np.int16)
     image[image == -2000] = 0
     if slope != 1:
         image = slope * image.astype(np.float32)
         image = image.astype(np.int16)
     image += np.int16(intercept)
-
     image = tf.expand_dims(image, axis=-1)
-
     return image
 
 
 def dcm_read(path):
     path = path.numpy().decode('utf-8')
     dcm_file = pydicom.dcmread(path)
-
     img = get_pixel_hu(dcm_file)
-
     return img
 
 
-def read_function(fn):
+def read_function_dcm(fn):
     out = tf.py_function(dcm_read, [fn], tf.int16)
     return out
+
+
+def read_function_png(fn):
+    f = tf.io.read_file(filename=fn)
+    f = tf.io.decode_png(contents=f, channels=1, dtype=tf.uint8)    # shape : W * H * ch
+    return f
 
 
 def get_image_name(patent_no_list, length, domain_name):
@@ -129,11 +129,11 @@ def get_image_name(patent_no_list, length, domain_name):
 
 
 class DCMDataLoader(object):
-    def __init__(self, dcm_path, image_size=512, patch_size=64, image_max=3071,
+    def __init__(self, data_path, image_size=512, patch_size=64, image_max=3071,
                  image_min=-1024, batch_size=1, extension='dcm', phase='train'):
         # dicom file dir
         self.extension = extension
-        self.dcm_path = dcm_path
+        self.data_path = data_path
 
         # image params
         self.image_size = image_size
@@ -159,19 +159,24 @@ class DCMDataLoader(object):
             return img
 
         def get_image_dataset(patent_no_list):
-            path_pattern_list = [os.path.join(self.dcm_path, patent_no, '*.' + self.extension) for patent_no in patent_no_list]
+            path_pattern_list = [os.path.join(self.data_path, patent_no, '*.' + self.extension) for patent_no in patent_no_list]
             p_path = tf.data.Dataset.list_files(path_pattern_list)
 
-            # if self.extension == 'dcm':
-            p = p_path.map(read_function, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+            # dcm
+            if self.extension == 'dcm':
+                p = p_path.map(read_function_dcm, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+            # png
+            else:
+                p = p_path.map(read_function_png)
             # normalization
             p = p.map(normalize, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+
             return p
 
         def len_image_dataset(patent_no_list):
             data_size = 0
             for patent_no in patent_no_list:
-                pattern = os.path.join(self.dcm_path, patent_no, '*.' + self.extension)
+                pattern = os.path.join(self.data_path, patent_no, '*.' + self.extension)
                 data_size += len(glob(pattern))
             return data_size
 

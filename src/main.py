@@ -18,11 +18,12 @@ import inout_util as ut
 parser = argparse.ArgumentParser(description='')
 # -------------------------------------
 # set load directory
-parser.add_argument('--dcm_path', dest='dcm_path', default='data/CT_image', help='dicom file directory')
-parser.add_argument('--train_A_list', dest='train_patient_no_A', type=ut.ParseList, default='L067,L291')
-parser.add_argument('--train_B_list', dest='train_patient_no_B', type=ut.ParseList, default='L067,L291')
-parser.add_argument('--test_A_list', dest='test_patient_no_A', type=ut.ParseList, default='L067,L291')
-parser.add_argument('--test_B_list', dest='test_patient_no_B', type=ut.ParseList, default='L067,L291')
+parser.add_argument('--data_path', dest='data_path', help='data file directory', required=True)
+parser.add_argument('--extension', dest='extension', default='dcm', help='file extension', required=True)
+parser.add_argument('--train_A_list', dest='train_patient_no_A', type=ut.ParseList, required=True)
+parser.add_argument('--train_B_list', dest='train_patient_no_B', type=ut.ParseList, required=True)
+parser.add_argument('--test_A_list', dest='test_patient_no_A', type=ut.ParseList, required=True)
+parser.add_argument('--test_B_list', dest='test_patient_no_B', type=ut.ParseList, required=True)
 parser.add_argument('--taskID', dest='taskID', default=None,
                     help='A unique ID for the log. It is a required input in the test phase.')
 
