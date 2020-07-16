@@ -38,8 +38,12 @@
     '--decay_epoch'
     
     '--unpair'
+    
+    '--dcm_path'
   
   - 추가된 항목
   
     '--epoch'
     
+    '--data_path'
+ 
