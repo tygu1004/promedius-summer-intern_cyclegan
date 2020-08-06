@@ -54,4 +54,4 @@
     
     '--data_path' : 데이터가 저장된 디렉토리
  
-    '--expansion' : 데이터 파일 확장자 (dcm or png)
+    '--extension' : 데이터 파일 확장자 (dcm or png)
