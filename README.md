@@ -5,6 +5,7 @@
 코드 수정을 진행하면서 공부했던 내용을 정리한 글을 프로메디우스 블로그에 확인할 수 있습니다!
 
 https://blog.promedius.ai/porting-from-tensorflow1-to-tensorflow2/
+
 https://blog.promedius.ai/x-ray-image-style-transfer-using-cyclegan/
 
 # 코드 단위에서 수정한 사항
